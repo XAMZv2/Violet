@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 // ------------------------------------------------------------------
 
 /** Crimson bawaan LYREON (diambil dari logo). */
-val LyreonCrimsonDefault = Color(0xFFE94560)
+val LyreonCrimsonDefault = Color(0xFFB388FF)
 
 private val DarkBackground = Color(0xFF0B0B10)
 private val DarkSurface = Color(0xFF14141C)
