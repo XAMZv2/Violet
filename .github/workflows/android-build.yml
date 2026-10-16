@@ -3,85 +3,90 @@ name: Android Build (Violet APK)
 
 on:
   push:
-    branches: [main, arena/*]
+    branches:
+      - main
+      - 'arena/**'
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Violet APK
     runs-on: ubuntu-latest
-
     permissions:
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
 
+      # Jangan gunakan input packages di setup-android.
+      # Paket SDK dipasang satu per satu pada langkah berikutnya.
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: latest
-          packages: |
-            platform-tools
-            platforms;android-36
-            build-tools;36.0.0
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
-
-      - name: Install Android 36 SDK
+      - name: Install Android SDK packages
+        shell: bash
         run: |
-          sdkmanager "platform-tools" \
+          set -euo pipefail
+
+          sdkmanager --version
+
+          yes | sdkmanager --licenses
+
+          sdkmanager --install \
+            "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
 
-      - name: Resolve Gradle Version
-        id: gv
+      - name: Verify Android SDK
+        shell: bash
         run: |
-          VERSION=$(grep -oP 'gradle-\K[0-9]+\.[0-9]+(\.[0-9]+)?(?=-bin\.zip)' \
-            gradle/wrapper/gradle-wrapper.properties)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
 
-      - name: Setup Gradle ${{ steps.gv.outputs.version }}
+          sdkmanager --list_installed
+
+          test -d "$ANDROID_HOME/platforms/android-36"
+          test -d "$ANDROID_HOME/build-tools/36.0.0"
+
+      - name: Validate Gradle Wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f gradlew
+          test -f gradle/wrapper/gradle-wrapper.properties
+
+          chmod +x gradlew
+
+          grep 'distributionUrl=' \
+            gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: ${{ steps.gv.outputs.version }}
-          cache-read-only: false
 
       - name: Build Debug APK
+        id: debug
+        shell: bash
         run: |
           set -o pipefail
-          gradle :app:assembleDebug \
-            --console=plain --stacktrace --no-daemon \
-            2>&1 | tee build-debug.log
 
-      - name: Report Debug Build Errors
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          {
-            echo '### Build DEBUG gagal — ringkasan error'
-            echo '```'
-            if [ -f build-debug.log ]; then
-              grep -E "^e: |error:|Unresolved|FAILED$" \
-                build-debug.log | head -n 100 || true
-              echo '---- tail log ----'
-              tail -n 40 build-debug.log
-            else
-              echo "Log build belum tersedia."
-            fi
-            echo '```'
-          } > report.md
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" \
-            -F body=@report.md || true
+          ./gradlew :app:assembleDebug \
+            --console=plain \
+            --stacktrace \
+            --no-daemon \
+            2>&1 | tee build-debug.log
 
       - name: Upload Debug APK
         if: success()
@@ -93,32 +98,16 @@ jobs:
           retention-days: 30
 
       - name: Build Release APK
+        id: release
+        shell: bash
         run: |
           set -o pipefail
-          gradle :app:assembleRelease \
-            --console=plain --stacktrace --no-daemon \
-            2>&1 | tee build-release.log
 
-      - name: Report Release Build Errors
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          {
-            echo '### Build RELEASE gagal — ringkasan error'
-            echo '```'
-            if [ -f build-release.log ]; then
-              grep -E "^e: |error:|Unresolved|FAILED|Missing class|Warning" \
-                build-release.log | head -n 120 || true
-              echo '---- tail log ----'
-              tail -n 60 build-release.log
-            else
-              echo "Log build belum tersedia."
-            fi
-            echo '```'
-          } > report.md
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" \
-            -F body=@report.md || true
+          ./gradlew :app:assembleRelease \
+            --console=plain \
+            --stacktrace \
+            --no-daemon \
+            2>&1 | tee build-release.log
 
       - name: Upload Release APK
         if: success()
@@ -128,3 +117,20 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Report build failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "Build Violet gagal."
+          echo "Periksa log pada langkah yang ditandai merah."
+
+          if [ -f build-debug.log ]; then
+            echo "===== DEBUG LOG ====="
+            tail -n 100 build-debug.log
+          fi
+
+          if [ -f build-release.log ]; then
+            echo "===== RELEASE LOG ====="
+            tail -n 100 build-release.log
+          fi
