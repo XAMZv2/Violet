@@ -42,12 +42,22 @@ jobs:
           test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
 
-      - name: Accept Android SDK licenses
+          - name: Accept Android SDK licenses
         shell: bash
         run: |
           set -euo pipefail
 
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          for license in \
+            "$ANDROID_HOME/licenses/android-sdk-license" \
+            "$ANDROID_HOME/licenses/android-sdk-preview-license"; do
+            if [ -f "$license" ]; then
+              echo "License file found: $license"
+            fi
+          done
+
+          "$SDKMANAGER" --licenses </dev/null
 
       - name: Install Android SDK packages
         shell: bash
