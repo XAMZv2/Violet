@@ -90,7 +90,7 @@ jobs:
 
           echo "Android SDK siap digunakan."
 
-           - name: Validate Gradle Wrapper
+      - name: Validate Gradle Wrapper
         shell: bash
         run: |
           set -euo pipefail
@@ -99,10 +99,11 @@ jobs:
           test -f gradle/wrapper/gradle-wrapper.properties
 
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Gradle Wrapper JAR tidak ada di repo."
-            echo "Mengunduh JAR resmi Gradle Wrapper..."
+            echo "Gradle Wrapper JAR tidak ditemukan."
+            echo "Mengunduh JAR dari repositori resmi Gradle..."
 
             mkdir -p gradle/wrapper
+
             curl -fL --retry 3 \
               https://raw.githubusercontent.com/gradle/gradle/v9.6.1/gradle/wrapper/gradle-wrapper.jar \
               -o gradle/wrapper/gradle-wrapper.jar
@@ -111,7 +112,7 @@ jobs:
           test -s gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
-          echo "Gradle Wrapper siap."
+          echo "Gradle Wrapper siap digunakan."
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
