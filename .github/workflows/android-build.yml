@@ -1,5 +1,5 @@
 
-name: Android Build (Violet APK)
+name: Build Violet APK
 
 on:
   push:
@@ -16,8 +16,10 @@ jobs:
   build:
     name: Build Violet APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout source code
@@ -29,23 +31,30 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # Jangan gunakan input packages di setup-android.
-      # Paket SDK dipasang satu per satu pada langkah berikutnya.
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: latest
+      - name: Locate Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
+
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
 
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
 
-          sdkmanager --version
-
-          yes | sdkmanager --licenses
-
-          sdkmanager --install \
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
             "platform-tools" \
             "platforms;android-36" \
             "build-tools;36.0.0"
@@ -55,10 +64,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          sdkmanager --list_installed
-
           test -d "$ANDROID_HOME/platforms/android-36"
           test -d "$ANDROID_HOME/build-tools/36.0.0"
+
+          echo "Android SDK siap digunakan."
 
       - name: Validate Gradle Wrapper
         shell: bash
@@ -67,25 +76,20 @@ jobs:
 
           test -f gradlew
           test -f gradle/wrapper/gradle-wrapper.properties
-
           chmod +x gradlew
-
-          grep 'distributionUrl=' \
-            gradle/wrapper/gradle-wrapper.properties
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build Debug APK
-        id: debug
         shell: bash
         run: |
           set -o pipefail
 
           ./gradlew :app:assembleDebug \
-            --console=plain \
-            --stacktrace \
             --no-daemon \
+            --stacktrace \
+            --console=plain \
             2>&1 | tee build-debug.log
 
       - name: Upload Debug APK
@@ -98,15 +102,14 @@ jobs:
           retention-days: 30
 
       - name: Build Release APK
-        id: release
         shell: bash
         run: |
           set -o pipefail
 
           ./gradlew :app:assembleRelease \
-            --console=plain \
-            --stacktrace \
             --no-daemon \
+            --stacktrace \
+            --console=plain \
             2>&1 | tee build-release.log
 
       - name: Upload Release APK
@@ -118,19 +121,13 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Report build failure
+      - name: Show build logs on failure
         if: failure()
         shell: bash
         run: |
-          echo "Build Violet gagal."
-          echo "Periksa log pada langkah yang ditandai merah."
-
-          if [ -f build-debug.log ]; then
-            echo "===== DEBUG LOG ====="
-            tail -n 100 build-debug.log
-          fi
-
-          if [ -f build-release.log ]; then
-            echo "===== RELEASE LOG ====="
-            tail -n 100 build-release.log
-          fi
+          for file in build-debug.log build-release.log; do
+            if [ -f "$file" ]; then
+              echo "===== $file ====="
+              tail -n 120 "$file"
+            fi
+          done
